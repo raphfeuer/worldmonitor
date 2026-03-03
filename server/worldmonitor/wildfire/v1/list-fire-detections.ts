@@ -114,7 +114,7 @@ export const listFireDetections: WildfireServiceHandler['listFireDetections'] = 
         const entries = Object.entries(MONITORED_REGIONS);
         const results = await Promise.allSettled(
           entries.map(async ([regionName, bbox]) => {
-            const url = `https://firms.modaps.eosdis.nasa.gov/api/area/csv/${apiKey}/${FIRMS_SOURCE}/${bbox}/1`;
+            const url = `https://firms.modaps.eosdis.nasa.gov/api/area/csv/${apiKey}/${FIRMS_SOURCE}/${bbox}/2`;
             const res = await fetch(url, {
               headers: { Accept: 'text/csv', 'User-Agent': CHROME_UA },
               signal: AbortSignal.timeout(15_000),
@@ -128,12 +128,18 @@ export const listFireDetections: WildfireServiceHandler['listFireDetections'] = 
           }),
         );
 
-        const fireDetections: ListFireDetectionsResponse['fireDetections'] = [];
+        let fireDetections: ListFireDetectionsResponse['fireDetections'] = [];
 
         for (const r of results) {
           if (r.status === 'fulfilled') {
             const { regionName, rows } = r.value;
             for (const row of rows) {
+              // Filter out low-confidence and very small fires
+              const conf = (row.confidence || '').toLowerCase();
+              if (conf === 'l') continue;
+              const frp = parseFloat(row.frp ?? '0') || 0;
+              if (frp < 1.0) continue;
+
               const detectedAt = parseDetectedAt(row.acq_date || '', row.acq_time || '');
               fireDetections.push({
                 id: `${row.latitude ?? ''}-${row.longitude ?? ''}-${row.acq_date ?? ''}-${row.acq_time ?? ''}`,
@@ -142,7 +148,7 @@ export const listFireDetections: WildfireServiceHandler['listFireDetections'] = 
                   longitude: parseFloat(row.longitude ?? '0') || 0,
                 },
                 brightness: parseFloat(row.bright_ti4 ?? '0') || 0,
-                frp: parseFloat(row.frp ?? '0') || 0,
+                frp,
                 confidence: mapConfidence(row.confidence || ''),
                 satellite: row.satellite || '',
                 detectedAt,
@@ -153,6 +159,12 @@ export const listFireDetections: WildfireServiceHandler['listFireDetections'] = 
           } else {
             console.error('[FIRMS]', r.reason?.message);
           }
+        }
+
+        // Cap at 2000 detections, keeping highest FRP (most significant fires)
+        if (fireDetections.length > 2000) {
+          fireDetections.sort((a, b) => (b.frp ?? 0) - (a.frp ?? 0));
+          fireDetections = fireDetections.slice(0, 2000);
         }
 
         console.log(`[FIRMS] Total: ${fireDetections.length} detections from ${entries.length} regions`);
