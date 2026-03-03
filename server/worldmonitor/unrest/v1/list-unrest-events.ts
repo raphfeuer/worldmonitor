@@ -33,8 +33,8 @@ const REDIS_CACHE_TTL = 900; // 15 min — ACLED + GDELT merge
 async function fetchAcledProtests(req: ListUnrestEventsRequest): Promise<UnrestEvent[]> {
   try {
     const now = Date.now();
-    const startMs = req.start ?? (now - 30 * 24 * 60 * 60 * 1000);
-    const endMs = req.end ?? now;
+    const startMs = req.start > 0 ? req.start : (now - 30 * 24 * 60 * 60 * 1000);
+    const endMs = req.end > 0 ? req.end : now;
     const startDate = new Date(startMs).toISOString().split('T')[0]!;
     const endDate = new Date(endMs).toISOString().split('T')[0]!;
 

@@ -1,7 +1,7 @@
 /**
  * ListFireDetections RPC -- proxies the NASA FIRMS CSV API.
  *
- * Fetches active fire detections from all 9 monitored regions in parallel
+ * Fetches active fire detections from monitored regions in parallel
  * and transforms the FIRMS CSV rows into proto-shaped FireDetection objects.
  *
  * Gracefully degrades to empty results when NASA_FIRMS_API_KEY is not set.
@@ -24,6 +24,7 @@ const FIRMS_SOURCE = 'VIIRS_SNPP_NRT';
 
 /** Bounding boxes as west,south,east,north */
 const MONITORED_REGIONS: Record<string, string> = {
+  // Geopolitical hotspots
   'Ukraine': '22,44,40,53',
   'Russia': '20,50,180,82',
   'Iran': '44,25,63,40',
@@ -33,6 +34,16 @@ const MONITORED_REGIONS: Record<string, string> = {
   'North Korea': '124,37,131,43',
   'Saudi Arabia': '34,16,56,32',
   'Turkey': '26,36,45,42',
+  // Fire-prone regions (global coverage)
+  'Western US': '-125,32,-102,49',
+  'Southern Europe': '-10,35,30,45',
+  'Sub-Saharan Africa': '-18,-35,52,15',
+  'Southeast Asia': '95,-10,141,25',
+  'South America': '-80,-55,-34,5',
+  'Australia': '110,-45,155,-10',
+  'Central America': '-120,10,-60,30',
+  'India': '68,6,98,37',
+  'Central Asia': '50,35,90,55',
 };
 
 /** Map VIIRS confidence letters to proto enum values. */
@@ -90,6 +101,7 @@ export const listFireDetections: WildfireServiceHandler['listFireDetections'] = 
     process.env.NASA_FIRMS_API_KEY || process.env.FIRMS_API_KEY || '';
 
   if (!apiKey) {
+    console.warn('[FIRMS] NASA_FIRMS_API_KEY not set — skipping');
     return { fireDetections: [], pagination: undefined };
   }
 
@@ -143,6 +155,7 @@ export const listFireDetections: WildfireServiceHandler['listFireDetections'] = 
           }
         }
 
+        console.log(`[FIRMS] Total: ${fireDetections.length} detections from ${entries.length} regions`);
         return fireDetections.length > 0 ? { fireDetections, pagination: undefined } : null;
       },
     );

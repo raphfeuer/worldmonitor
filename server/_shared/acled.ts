@@ -45,7 +45,10 @@ interface FetchAcledOptions {
  */
 export async function fetchAcledCached(opts: FetchAcledOptions): Promise<AcledRawEvent[]> {
   const token = process.env.ACLED_ACCESS_TOKEN;
-  if (!token) return [];
+  if (!token) {
+    console.warn('[ACLED] ACLED_ACCESS_TOKEN not set — skipping');
+    return [];
+  }
 
   const cacheKey = `acled:shared:${opts.eventTypes}:${opts.startDate}:${opts.endDate}:${opts.country || 'all'}:${opts.limit || 500}`;
   const result = await cachedFetchJson<AcledRawEvent[]>(cacheKey, ACLED_CACHE_TTL, async () => {
@@ -58,7 +61,10 @@ export async function fetchAcledCached(opts: FetchAcledOptions): Promise<AcledRa
     });
     if (opts.country) params.set('country', opts.country);
 
-    const resp = await fetch(`${ACLED_API_URL}?${params}`, {
+    const url = `${ACLED_API_URL}?${params}`;
+    console.log(`[ACLED] Fetching: ${opts.eventTypes} ${opts.startDate}..${opts.endDate} country=${opts.country || 'all'}`);
+
+    const resp = await fetch(url, {
       headers: {
         Accept: 'application/json',
         Authorization: `Bearer ${token}`,
@@ -67,11 +73,19 @@ export async function fetchAcledCached(opts: FetchAcledOptions): Promise<AcledRa
       signal: AbortSignal.timeout(ACLED_TIMEOUT_MS),
     });
 
-    if (!resp.ok) throw new Error(`ACLED API error: ${resp.status}`);
+    if (!resp.ok) {
+      const body = await resp.text().catch(() => '');
+      console.error(`[ACLED] HTTP ${resp.status}: ${body.slice(0, 200)}`);
+      throw new Error(`ACLED API error: ${resp.status} — ${body.slice(0, 100)}`);
+    }
     const data = (await resp.json()) as { data?: AcledRawEvent[]; message?: string; error?: string };
-    if (data.message || data.error) throw new Error(data.message || data.error || 'ACLED API error');
+    if (data.message || data.error) {
+      console.error(`[ACLED] API error response: ${data.message || data.error}`);
+      throw new Error(data.message || data.error || 'ACLED API error');
+    }
 
     const events = data.data || [];
+    console.log(`[ACLED] Got ${events.length} events for ${opts.eventTypes}`);
     return events.length > 0 ? events : null;
   });
   return result || [];
